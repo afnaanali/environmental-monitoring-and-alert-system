@@ -75,10 +75,10 @@ Render offers free hosting for web applications with automatic deployments from 
    Name: environmental-monitoring-system
    Region: Choose closest to you (e.g., Oregon, Frankfurt, Singapore)
    Branch: main
-   Root Directory: (leave blank or specify 'jjj' if needed)
+   Root Directory: (leave blank)
    Runtime: Python 3
-   Build Command: pip install -r requirements.txt
-   Start Command: gunicorn app:app --bind 0.0.0.0:$PORT
+   Build Command: pip install -r backend/requirements.txt
+   Start Command: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
    ```
 
 4. **Set Environment Variables:**

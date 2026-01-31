@@ -45,7 +45,7 @@ app.add_middleware(
 )
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="."), name="static")
+app.mount("/static", StaticFiles(directory="../frontend"), name="static")
 
 # Configuration
 # SECURITY NOTE: API keys are loaded from environment variables to prevent accidental commits
