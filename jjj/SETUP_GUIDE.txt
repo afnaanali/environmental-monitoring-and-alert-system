@@ -1,0 +1,117 @@
+═══════════════════════════════════════════════════════════════════
+  SETUP GUIDE - Environmental Monitoring System
+═══════════════════════════════════════════════════════════════════
+
+🚀 Quick Start - Get Real Data Working in 3 Steps:
+
+STEP 1: Get Your Free API Key
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Go to: https://www.weatherapi.com/signup.aspx
+2. Fill in the registration form:
+   - Email address
+   - Password
+   - Accept terms
+3. Click "Sign Up" - NO CREDIT CARD REQUIRED
+4. Check your email and verify your account
+5. Log in to your dashboard
+6. Copy your API Key (it looks like: abc123def456ghi789...)
+
+Free Tier Benefits:
+✅ 1,000,000 API calls per month
+✅ Real-time weather data
+✅ Air quality information
+✅ 3-day forecast
+✅ No credit card required
+✅ No expiration
+
+STEP 2: Update the API Key in Your Code
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Open the file: script.js
+2. Find line 5 (near the top):
+   
+   const API_KEY = 'YOUR_API_KEY_HERE';
+   
+3. Replace 'YOUR_API_KEY_HERE' with your actual API key:
+   
+   const API_KEY = 'abc123def456ghi789...';
+   
+4. Save the file (Ctrl + S)
+
+STEP 3: Test Your Application
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Open index.html in your browser
+2. Enter a city name (e.g., "London", "Mumbai", "New York")
+3. Click "Monitor Location"
+4. You should now see REAL data! ✅
+
+═══════════════════════════════════════════════════════════════════
+
+📍 Testing Suggestions:
+
+Try these locations to test:
+- London, UK
+- New York, USA
+- Mumbai, India
+- Tokyo, Japan
+- Sydney, Australia
+- Paris, France
+
+Or use coordinates:
+- 51.5074,-0.1278 (London)
+- 40.7128,-74.0060 (New York)
+- 19.0760,72.8777 (Mumbai)
+
+═══════════════════════════════════════════════════════════════════
+
+❓ Troubleshooting:
+
+Problem: Still seeing "Unable to fetch data"
+Solution: 
+- Make sure you copied the API key correctly
+- Check that there are no extra spaces
+- API key should be in single quotes
+- Wait 1-2 minutes after signup for activation
+
+Problem: "Invalid API key" message
+Solution:
+- Double-check you copied the complete key
+- Make sure you're logged into weatherapi.com
+- Try generating a new key from dashboard
+
+Problem: Location not found
+Solution:
+- Try a major city name
+- Use coordinates instead
+- Check spelling
+
+═══════════════════════════════════════════════════════════════════
+
+📊 What You'll See With Real Data:
+
+✅ Real-time temperature and humidity
+✅ Current wind speed and direction
+✅ Atmospheric pressure
+✅ Air Quality Index (AQI)
+✅ PM2.5, PM10, O₃, NO₂ levels
+✅ 24-hour trend charts
+✅ Environmental risk scoring
+✅ Intelligent correlation analysis
+✅ Location on interactive map
+✅ Contextual alerts
+
+═══════════════════════════════════════════════════════════════════
+
+💡 Tips:
+
+- Data refreshes automatically every 5 minutes
+- Use the 📍 button to get your current location
+- Check the correlation analysis for insights
+- Monitor the risk score for safety alerts
+
+═══════════════════════════════════════════════════════════════════
+
+Need Help?
+- WeatherAPI Documentation: https://www.weatherapi.com/docs/
+- API Dashboard: https://www.weatherapi.com/my/
+
+═══════════════════════════════════════════════════════════════════

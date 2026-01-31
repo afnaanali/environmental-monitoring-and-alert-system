@@ -1,0 +1,228 @@
+═══════════════════════════════════════════════════════════════════
+  FLASK BACKEND - Setup & Usage Guide
+═══════════════════════════════════════════════════════════════════
+
+🚀 QUICK START
+
+Step 1: Install Python Dependencies
+────────────────────────────────────
+Open PowerShell in this directory and run:
+
+  pip install -r requirements.txt
+
+Or use the automated script:
+
+  .\start_server.ps1
+
+
+Step 2: Start the Flask Server
+────────────────────────────────────
+  python app.py
+
+The server will start at: http://localhost:5000
+
+
+Step 3: Open the Application
+────────────────────────────────────
+Open your browser and go to:
+
+  http://localhost:5000
+
+The frontend will automatically connect to the Flask backend!
+
+═══════════════════════════════════════════════════════════════════
+
+📡 API ENDPOINTS
+
+Base URL: http://localhost:5000/api
+
+1. Health Check
+   GET /api/health
+   Returns: Server status and version
+
+2. Get Weather Data
+   GET /api/weather?location=London
+   Parameters: location (city name or coordinates)
+   Returns: Complete weather and air quality data
+
+3. Get Historical Data
+   GET /api/weather/history?location=London&days=7
+   Parameters: location, days (optional, default 7)
+   Returns: Historical weather data
+
+4. Search Locations
+   GET /api/locations/search?q=London
+   Parameters: q (search query)
+   Returns: List of matching locations
+
+5. Generate Alerts
+   POST /api/alerts/generate
+   Body: Weather data JSON
+   Returns: Contextual alerts
+
+6. Clear Cache
+   POST /api/cache/clear
+   Returns: Cache cleared confirmation
+
+7. Get Statistics
+   GET /api/stats
+   Returns: Server statistics
+
+═══════════════════════════════════════════════════════════════════
+
+✨ BACKEND FEATURES
+
+✅ Server-Side API Calls
+   - API key stored securely on server
+   - No exposure in browser
+
+✅ Response Caching
+   - 5-minute cache for identical requests
+   - Reduces API calls and improves performance
+
+✅ Error Handling
+   - Comprehensive error messages
+   - Proper HTTP status codes
+
+✅ CORS Enabled
+   - Frontend can communicate with backend
+   - Cross-origin requests supported
+
+✅ Additional Calculations
+   - Heat index calculation
+   - Wind chill calculation
+   - Enhanced risk metrics
+
+✅ Rate Limiting Ready
+   - Easy to add rate limiting
+   - Protects API quota
+
+═══════════════════════════════════════════════════════════════════
+
+🔧 CONFIGURATION
+
+Environment Variables (.env file):
+──────────────────────────────────
+WEATHER_API_KEY=your_api_key_here
+FLASK_ENV=development
+FLASK_DEBUG=True
+CACHE_DURATION=300
+PORT=5000
+
+═══════════════════════════════════════════════════════════════════
+
+📁 PROJECT STRUCTURE
+
+jjj/
+├── app.py                  # Flask backend server
+├── requirements.txt        # Python dependencies
+├── .env                    # Environment variables
+├── start_server.ps1       # Server startup script
+├── index.html             # Frontend HTML
+├── style.css              # Frontend CSS
+├── script.js              # Frontend JavaScript (updated for backend)
+└── README.md              # Documentation
+
+═══════════════════════════════════════════════════════════════════
+
+🧪 TESTING THE API
+
+Using PowerShell:
+─────────────────
+
+# Test health endpoint
+Invoke-RestMethod -Uri "http://localhost:5000/api/health"
+
+# Get weather for London
+Invoke-RestMethod -Uri "http://localhost:5000/api/weather?location=London"
+
+# Search locations
+Invoke-RestMethod -Uri "http://localhost:5000/api/locations/search?q=Mumbai"
+
+# Clear cache
+Invoke-RestMethod -Uri "http://localhost:5000/api/cache/clear" -Method POST
+
+# Get stats
+Invoke-RestMethod -Uri "http://localhost:5000/api/stats"
+
+═══════════════════════════════════════════════════════════════════
+
+🎯 BENEFITS OF FLASK BACKEND
+
+Security:
+- API keys never exposed in browser
+- Server-side validation
+- Protected endpoints
+
+Performance:
+- Built-in caching system
+- Reduced API calls
+- Faster response times
+
+Scalability:
+- Easy to add database storage
+- Can implement user authentication
+- Ready for production deployment
+
+Features:
+- Server-side calculations
+- Data preprocessing
+- Historical data aggregation
+- Custom alerting logic
+
+═══════════════════════════════════════════════════════════════════
+
+🚀 FUTURE ENHANCEMENTS (Easy to Add)
+
+✓ Database Integration
+  - Store historical data
+  - User preferences
+  - Alert history
+
+✓ User Authentication
+  - Login/Register
+  - Saved locations
+  - Custom alerts
+
+✓ WebSocket Support
+  - Real-time updates
+  - Live notifications
+  - Push alerts
+
+✓ Data Analytics
+  - Trend analysis
+  - Predictions
+  - Reports generation
+
+✓ Multiple API Sources
+  - Combine data from OpenAQ
+  - PurpleAir sensors
+  - Government monitoring
+
+═══════════════════════════════════════════════════════════════════
+
+❗ TROUBLESHOOTING
+
+Problem: "Module not found" error
+Solution: Install dependencies
+  pip install -r requirements.txt
+
+Problem: Port 5000 already in use
+Solution: Change port in app.py or .env file
+
+Problem: CORS errors
+Solution: Flask-CORS is installed and configured
+
+Problem: API key not working
+Solution: Update WEATHER_API_KEY in .env file
+
+═══════════════════════════════════════════════════════════════════
+
+📞 SUPPORT
+
+For issues or questions:
+- Check the console logs (terminal and browser)
+- Verify all dependencies are installed
+- Ensure Flask server is running before opening browser
+
+═══════════════════════════════════════════════════════════════════

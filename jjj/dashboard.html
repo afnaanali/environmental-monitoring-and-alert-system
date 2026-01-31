@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #4ade80;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .stat-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4ade80;
+        }
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        .location-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .btn {
+            background: #4ade80;
+            color: #1e3c72;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn:hover { background: #22c55e; }
+        pre {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .loading { text-align: center; padding: 20px; }
+        .emoji { font-size: 24px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 Environmental Monitoring System Dashboard</h1>
+        
+        <div class="card">
+            <h2>📊 System Statistics</h2>
+            <div id="stats" class="loading">Loading...</div>
+        </div>
+        
+        <div class="card">
+            <h2>🏙️ Monitored Locations</h2>
+            <div id="locations" class="loading">Loading...</div>
+        </div>
+        
+        <div class="card">
+            <h2>🔮 Test Prediction (Mumbai)</h2>
+            <button class="btn" onclick="testPrediction()">Generate Prediction</button>
+            <pre id="prediction">Click button to test prediction system</pre>
+        </div>
+        
+        <div class="card">
+            <h2>📈 Historical Data Sample (Delhi)</h2>
+            <button class="btn" onclick="testHistorical()">Fetch Historical Data</button>
+            <pre id="historical">Click button to view last 6 hours of data</pre>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const data = await response.json();
+                
+                const statsHTML = `
+                    <div class="stats">
+                        <div class="stat-box">
+                            <div class="stat-value">${data.database.total_readings || 0}</div>
+                            <div class="stat-label">Total Readings</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">${data.database.unique_locations || 0}</div>
+                            <div class="stat-label">Monitored Cities</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">${data.cache_size || 0}</div>
+                            <div class="stat-label">Cached Items</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">5 min</div>
+                            <div class="stat-label">Collection Interval</div>
+                        </div>
+                    </div>
+                    <p style="margin-top: 20px; opacity: 0.8;">
+                        <strong>Oldest:</strong> ${data.database.oldest_reading || 'N/A'}<br>
+                        <strong>Newest:</strong> ${data.database.newest_reading || 'N/A'}
+                    </p>
+                `;
+                
+                document.getElementById('stats').innerHTML = statsHTML;
+            } catch (error) {
+                document.getElementById('stats').innerHTML = `<p style="color: #ef4444;">Error: ${error.message}</p>`;
+            }
+        }
+
+        async function loadLocations() {
+            try {
+                const response = await fetch(`${API_BASE}/locations/monitored`);
+                const data = await response.json();
+                
+                if (data.success && data.locations) {
+                    let html = '';
+                    data.locations.forEach(loc => {
+                        html += `
+                            <div class="location-item">
+                                <div>
+                                    <strong>${loc.name}</strong><br>
+                                    <small>${loc.latest_reading}</small>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span class="emoji">🌡️</span> ${loc.temp_c}°C<br>
+                                    <span class="emoji">💧</span> ${loc.humidity}%
+                                </div>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('locations').innerHTML = html;
+                } else {
+                    document.getElementById('locations').innerHTML = '<p>No data available</p>';
+                }
+            } catch (error) {
+                document.getElementById('locations').innerHTML = `<p style="color: #ef4444;">Error: ${error.message}</p>`;
+            }
+        }
+
+        async function testPrediction() {
+            document.getElementById('prediction').textContent = 'Generating prediction...';
+            try {
+                const response = await fetch(`${API_BASE}/predict/Mumbai`);
+                const data = await response.json();
+                document.getElementById('prediction').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('prediction').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testHistorical() {
+            document.getElementById('historical').textContent = 'Fetching data...';
+            try {
+                const response = await fetch(`${API_BASE}/historical/Delhi?hours=6`);
+                const data = await response.json();
+                document.getElementById('historical').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('historical').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Load data on page load
+        loadStats();
+        loadLocations();
+
+        // Refresh every 30 seconds
+        setInterval(() => {
+            loadStats();
+            loadLocations();
+        }, 30000);
+    </script>
+</body>
+</html>

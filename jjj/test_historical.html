@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Graph Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background: #1a1a2e;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #chartContainer {
+            max-width: 1200px;
+            height: 400px;
+            margin: 20px auto;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        #status {
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 1200px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .success { background: rgba(46, 204, 113, 0.2); color: #2ecc71; }
+        .warning { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+        .error { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <h1>Historical Graph Test</h1>
+    
+    <div>
+        <button onclick="testAPI()">Test API</button>
+        <button onclick="testMumbai()">Load Mumbai Data</button>
+        <button onclick="testDelhi()">Load Delhi Data</button>
+        <button onclick="testLondon()">Load London Data</button>
+    </div>
+
+    <div id="status" class="success">Click a button to test</div>
+
+    <div id="chartContainer">
+        <canvas id="testChart"></canvas>
+    </div>
+
+    <script>
+        let chart = null;
+
+        // Initialize chart
+        const ctx = document.getElementById('testChart');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: []
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: '#ffffff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#ffffff' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        async function testAPI() {
+            try {
+                const response = await fetch('http://localhost:5000/api/historical/Mumbai?hours=6');
+                const result = await response.json();
+                console.log('API Response:', result);
+                
+                document.getElementById('status').innerHTML = 
+                    `<div class="success">API Success! Got ${result.data?.length || 0} readings</div>
+                     <pre style="text-align: left; font-size: 12px; overflow: auto;">${JSON.stringify(result, null, 2)}</pre>`;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loadData(location) {
+            try {
+                document.getElementById('status').innerHTML = `<div class="warning">Loading ${location}...</div>`;
+                
+                const response = await fetch(`http://localhost:5000/api/historical/${location}?hours=6`);
+                const result = await response.json();
+                
+                if (!result.success || !result.data || result.data.length === 0) {
+                    document.getElementById('status').innerHTML = 
+                        `<div class="warning">No data for ${location}</div>`;
+                    return;
+                }
+
+                const data = result.data;
+                
+                // Format data for chart
+                const timestamps = data.map(r => {
+                    const date = new Date(r.timestamp);
+                    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                });
+                const temperatures = data.map(r => r.temp_c);
+                const humidity = data.map(r => r.humidity);
+                const pm25 = data.map(r => r.pm2_5);
+
+                // Update chart
+                chart.data.labels = timestamps;
+                chart.data.datasets = [
+                    {
+                        label: 'Temperature (°C)',
+                        data: temperatures,
+                        borderColor: '#ff6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: humidity,
+                        borderColor: '#36a2eb',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'PM2.5 (µg/m³)',
+                        data: pm25,
+                        borderColor: '#ffce56',
+                        backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                        borderWidth: 2
+                    }
+                ];
+                chart.update();
+
+                document.getElementById('status').innerHTML = 
+                    `<div class="success">✓ Loaded ${data.length} readings for ${location}!</div>`;
+                    
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').innerHTML = 
+                    `<div class="error">Error loading ${location}: ${error.message}</div>`;
+            }
+        }
+
+        function testMumbai() { loadData('Mumbai'); }
+        function testDelhi() { loadData('Delhi'); }
+        function testLondon() { loadData('London'); }
+    </script>
+</body>
+</html>

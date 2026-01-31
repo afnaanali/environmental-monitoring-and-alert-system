@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environmental Monitoring & Alert System</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Chart.js for Data Visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-leaf"></i> Environmental Monitoring System</h1>
+                <p class="subtitle">Real-time Air Quality, Weather & Environmental Data</p>
+            </div>
+            <div class="current-time" id="currentTime"></div>
+        </header>
+
+        <!-- Search Section -->
+        <section class="search-section">
+            <div class="search-container">
+                <input type="text" id="locationInput" placeholder="Enter city name or coordinates (e.g., London or 51.5074,-0.1278)" class="search-input">
+                <button id="searchBtn" class="search-btn">
+                    <i class="fas fa-search"></i> Monitor Location
+                </button>
+                <button id="currentLocationBtn" class="location-btn" title="Use Current Location">
+                    <i class="fas fa-location-crosshairs"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- Alert Banner -->
+        <div id="alertBanner" class="alert-banner hidden">
+            <div class="alert-content">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="alertMessage"></span>
+            </div>
+            <button class="alert-close" onclick="closeAlert()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Contextual Alerts Section -->
+        <section id="contextualAlertsSection" class="contextual-alerts-section hidden">
+            <div class="section-header">
+                <h2><i class="fas fa-bell"></i> Active Environmental Alerts</h2>
+                <div class="alert-header-controls">
+                    <button id="soundToggle" class="sound-toggle-btn" onclick="toggleAlertSound()" title="Mute alert sounds">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    <span class="alert-count" id="alertCount">0</span>
+                </div>
+            </div>
+            <div id="contextualAlerts" class="contextual-alerts-container">
+                <!-- Alerts will be dynamically inserted here -->
+            </div>
+        </section>
+
+        <!-- Main Dashboard -->
+        <div class="dashboard">
+            <!-- Location Info Card -->
+            <div class="card location-card">
+                <h2><i class="fas fa-map-marker-alt"></i> Location Information</h2>
+                <div id="locationInfo" class="location-info">
+                    <p class="placeholder-text">Enter a location to start monitoring</p>
+                </div>
+            </div>
+
+            <!-- Environmental Risk Score -->
+            <div class="card risk-card">
+                <h2><i class="fas fa-gauge-high"></i> Environmental Risk Score</h2>
+                <div id="riskScore" class="risk-score">
+                    <div class="risk-meter">
+                        <div class="risk-meter-fill" id="riskMeterFill"></div>
+                    </div>
+                    <div class="risk-value" id="riskValue">--</div>
+                    <div class="risk-label" id="riskLabel">No Data</div>
+                </div>
+            </div>
+
+            <!-- Current Conditions -->
+            <div class="card conditions-card">
+                <h2><i class="fas fa-cloud-sun"></i> Current Conditions</h2>
+                <div id="currentConditions" class="conditions-grid">
+                    <div class="condition-item">
+                        <i class="fas fa-temperature-high"></i>
+                        <span class="condition-label">Temperature</span>
+                        <span class="condition-value" id="temperature">--</span>
+                    </div>
+                    <div class="condition-item">
+                        <i class="fas fa-droplet"></i>
+                        <span class="condition-label">Humidity</span>
+                        <span class="condition-value" id="humidity">--</span>
+                    </div>
+                    <div class="condition-item">
+                        <i class="fas fa-wind"></i>
+                        <span class="condition-label">Wind Speed</span>
+                        <span class="condition-value" id="windSpeed">--</span>
+                    </div>
+                    <div class="condition-item">
+                        <i class="fas fa-compass"></i>
+                        <span class="condition-label">Wind Direction</span>
+                        <span class="condition-value" id="windDirection">--</span>
+                    </div>
+                    <div class="condition-item">
+                        <i class="fas fa-gauge"></i>
+                        <span class="condition-label">Pressure</span>
+                        <span class="condition-value" id="pressure">--</span>
+                    </div>
+                    <div class="condition-item">
+                        <i class="fas fa-eye"></i>
+                        <span class="condition-label">Visibility</span>
+                        <span class="condition-value" id="visibility">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Air Quality Index -->
+            <div class="card aqi-card">
+                <h2><i class="fas fa-lungs"></i> Air Quality Index</h2>
+                <div id="airQuality" class="aqi-content">
+                    <div class="aqi-value" id="aqiValue">--</div>
+                    <div class="aqi-status" id="aqiStatus">No Data</div>
+                    <div class="pollutants" id="pollutants">
+                        <div class="pollutant-item">
+                            <span class="pollutant-name">PM2.5</span>
+                            <span class="pollutant-value" id="pm25">--</span>
+                        </div>
+                        <div class="pollutant-item">
+                            <span class="pollutant-name">PM10</span>
+                            <span class="pollutant-value" id="pm10">--</span>
+                        </div>
+                        <div class="pollutant-item">
+                            <span class="pollutant-name">O₃</span>
+                            <span class="pollutant-value" id="o3">--</span>
+                        </div>
+                        <div class="pollutant-item">
+                            <span class="pollutant-name">NO₂</span>
+                            <span class="pollutant-value" id="no2">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Assistant Card -->
+            <div class="card ai-assistant-card">
+                <div class="ai-header">
+                    <h2><i class="fas fa-robot"></i> AI Environmental Assistant</h2>
+                    <span class="ai-status" id="aiStatus">Ready</span>
+                </div>
+                <p class="ai-description">Ask me about air quality, weather conditions, safety for outdoor activities, or predictions for the next hour.</p>
+                
+                <div class="chat-container" id="chatContainer">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="ai-message welcome-message">
+                            <div class="message-icon"><i class="fas fa-robot"></i></div>
+                            <div class="message-content">
+                                <p><strong>Hello! I'm your AI Environmental Assistant.</strong> 🌍</p>
+                                <p>I can help you with:</p>
+                                <ul>
+                                    <li>🚶 Safety recommendations for outdoor activities</li>
+                                    <li>📊 Weather predictions for the next hour</li>
+                                    <li>🌫️ Air quality analysis and explanations</li>
+                                    <li>🌡️ Weather conditions and trends</li>
+                                    <li>⚠️ Alert explanations and correlations</li>
+                                </ul>
+                                <p>Try asking: <em>"How is the air quality in Manali?"</em> or <em>"What will the weather be in Kochi after an hour?"</em></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <input type="text" id="aiQueryInput" class="ai-query-input" placeholder="Ask about air quality, weather, or safety..." />
+                    <button id="aiSendBtn" class="ai-send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                
+                <div class="ai-suggestions">
+                    <span class="suggestion-label">Quick questions:</span>
+                    <button class="suggestion-btn" data-query="How is the air quality in Manali?">🏔️ Manali air quality</button>
+                    <button class="suggestion-btn" data-query="Is it safe to go for a walk in Mumbai?">🚶 Mumbai safety</button>
+                    <button class="suggestion-btn" data-query="What is the weather in New Delhi?">🌡️ Delhi weather</button>
+                    <button class="suggestion-btn" data-query="Temperature in Tokyo">🗼 Tokyo temperature</button>
+                </div>
+            </div>
+
+            <!-- Map Visualization -->
+            <div class="card map-card">
+                <h2><i class="fas fa-map"></i> Sensor Location Map</h2>
+                <div class="map-legend">
+                    <span class="legend-title">Risk Levels:</span>
+                    <span class="legend-item"><span class="legend-dot" style="background: #2ecc71;"></span> Very Low (0-20)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background: #3498db;"></span> Low (20-40)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background: #f39c12;"></span> Moderate (40-60)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background: #e67e22;"></span> High (60-80)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background: #e74c3c;"></span> Very High (80+)</span>
+                </div>
+                <div id="map" class="map-container"></div>
+            </div>
+
+            <!-- Historical Trends -->
+            <div class="card chart-card">
+                <h2><i class="fas fa-chart-line"></i> Temperature & Humidity Trends (24h)</h2>
+                <canvas id="weatherChart"></canvas>
+            </div>
+
+            <!-- Historical Database Graph -->
+            <div class="card chart-card historical-graph-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-database"></i> Historical Data from Database</h2>
+                    <div class="time-range-controls">
+                        <button class="time-btn active" data-hours="6">6h</button>
+                        <button class="time-btn" data-hours="12">12h</button>
+                        <button class="time-btn" data-hours="24">24h</button>
+                        <button class="time-btn" data-hours="48">48h</button>
+                    </div>
+                </div>
+                <div class="metrics-toggle">
+                    <label class="metric-checkbox">
+                        <input type="checkbox" id="showTemp" checked>
+                        <span class="checkmark temp-color">Temperature</span>
+                    </label>
+                    <label class="metric-checkbox">
+                        <input type="checkbox" id="showHumidity" checked>
+                        <span class="checkmark humidity-color">Humidity</span>
+                    </label>
+                    <label class="metric-checkbox">
+                        <input type="checkbox" id="showPM25" checked>
+                        <span class="checkmark pm25-color">PM2.5</span>
+                    </label>
+                </div>
+                <div id="historicalGraphStatus" class="graph-status"></div>
+                <canvas id="historicalChart"></canvas>
+            </div>
+
+            <!-- Correlation Analysis -->
+            <div class="card correlation-card">
+                <h2><i class="fas fa-project-diagram"></i> Correlation Analysis</h2>
+                <div id="correlationAnalysis" class="correlation-content">
+                    <p class="placeholder-text">Correlation patterns will appear here after data collection</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Environmental Monitoring System © 2026 | Data sources: OpenWeatherMap, OpenAQ</p>
+            <p class="data-update">Last Updated: <span id="lastUpdate">--</span></p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <p>Fetching environmental data...</p>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Main JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>

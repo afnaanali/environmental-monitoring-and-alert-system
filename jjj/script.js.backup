@@ -1,0 +1,1360 @@
+// Environmental Monitoring System - Main JavaScript
+
+// API Configuration - Now using Flask Backend
+// Check if we're running on file:// protocol (direct HTML) or http:// (Flask server)
+const isFileProtocol = window.location.protocol === 'file:';
+const BACKEND_URL = isFileProtocol ? 'http://localhost:5000' : window.location.origin;
+const API_BASE = `${BACKEND_URL}/api`;
+
+console.log('Running on:', window.location.protocol);
+console.log('Backend URL:', BACKEND_URL);
+console.log('API Base:', API_BASE);
+
+// Global variables
+let map;
+let marker;
+let weatherChart;
+let currentLocationData = null;
+let historicalData = {
+    temperature: [],
+    humidity: [],
+    timestamps: []
+};
+
+// Industrial zones and pollution sources database
+const pollutionSources = {
+    'london': {
+        industrial: { direction: 'E', name: 'Thames Gateway Industrial Area', distance: '15km' },
+        traffic: { direction: 'N', name: 'M25 Motorway', distance: '10km' },
+        airport: { direction: 'W', name: 'Heathrow Airport', distance: '25km' }
+    },
+    'mumbai': {
+        industrial: { direction: 'NE', name: 'Mahul Industrial Area', distance: '12km' },
+        traffic: { direction: 'W', name: 'Western Express Highway', distance: '5km' },
+        port: { direction: 'S', name: 'Mumbai Port', distance: '8km' }
+    },
+    'delhi': {
+        industrial: { direction: 'W', name: 'Gurgaon Industrial Belt', distance: '20km' },
+        traffic: { direction: 'S', name: 'Ring Road', distance: '3km' },
+        power: { direction: 'E', name: 'Badarpur Power Plant', distance: '18km' }
+    },
+    'beijing': {
+        industrial: { direction: 'S', name: 'Hebei Industrial Zone', distance: '50km' },
+        traffic: { direction: 'E', name: 'Beijing Ring Roads', distance: '10km' },
+        coal: { direction: 'SW', name: 'Coal Heating Plants', distance: '15km' }
+    },
+    'los angeles': {
+        industrial: { direction: 'S', name: 'Long Beach Port', distance: '30km' },
+        traffic: { direction: 'N', name: 'I-405 Freeway', distance: '8km' },
+        refinery: { direction: 'SW', name: 'Oil Refineries', distance: '25km' }
+    },
+    'new york': {
+        industrial: { direction: 'W', name: 'New Jersey Industrial Corridor', distance: '20km' },
+        traffic: { direction: 'N', name: 'Cross Bronx Expressway', distance: '10km' },
+        airport: { direction: 'E', name: 'JFK Airport', distance: '25km' }
+    },
+    'paris': {
+        industrial: { direction: 'NE', name: 'Seine-Saint-Denis Industrial Zone', distance: '15km' },
+        traffic: { direction: 'W', name: 'Périphérique Ring Road', distance: '5km' },
+        airport: { direction: 'NE', name: 'Charles de Gaulle Airport', distance: '30km' }
+    },
+    'tokyo': {
+        industrial: { direction: 'E', name: 'Tokyo Bay Industrial Area', distance: '20km' },
+        traffic: { direction: 'W', name: 'Shuto Expressway', distance: '8km' },
+        port: { direction: 'SE', name: 'Tokyo Port', distance: '15km' }
+    },
+    'shanghai': {
+        industrial: { direction: 'N', name: 'Baoshan Industrial Zone', distance: '25km' },
+        traffic: { direction: 'W', name: 'Inner Ring Road', distance: '10km' },
+        port: { direction: 'E', name: 'Shanghai Port', distance: '30km' }
+    }
+};
+
+// Wind direction mapping
+const windDirections = {
+    'N': 0, 'NNE': 22.5, 'NE': 45, 'ENE': 67.5,
+    'E': 90, 'ESE': 112.5, 'SE': 135, 'SSE': 157.5,
+    'S': 180, 'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
+    'W': 270, 'WNW': 292.5, 'NW': 315, 'NNW': 337.5
+};
+
+// Initialize the application
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+});
+
+function initializeApp() {
+    // Update current time
+    updateCurrentTime();
+    setInterval(updateCurrentTime, 1000);
+
+    // Initialize map
+    initializeMap();
+
+    // Event listeners
+    document.getElementById('searchBtn').addEventListener('click', searchLocation);
+    document.getElementById('currentLocationBtn').addEventListener('click', getCurrentLocation);
+    document.getElementById('locationInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') searchLocation();
+    });
+
+    // Initialize empty chart
+    initializeChart();
+}
+
+function updateCurrentTime() {
+    const now = new Date();
+    const timeString = now.toLocaleString('en-US', { 
+        weekday: 'short', 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    document.getElementById('currentTime').textContent = timeString;
+}
+
+// Initialize Leaflet Map
+function initializeMap() {
+    map = L.map('map').setView([20, 0], 2);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 18
+    }).addTo(map);
+}
+
+// Search for location
+async function searchLocation() {
+    const input = document.getElementById('locationInput').value.trim();
+    
+    if (!input) {
+        showAlert('Please enter a location', 'warning');
+        return;
+    }
+
+    showLoading(true);
+    console.log('🔍 Searching for location:', input);
+    
+    try {
+        // Check if input is coordinates (lat,lon) or city name
+        const coordPattern = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/;
+        let query = input;
+        
+        if (coordPattern.test(input)) {
+            query = input;
+        }
+        
+        const apiUrl = `${API_BASE}/weather?location=${encodeURIComponent(query)}`;
+        console.log('📡 Making request to:', apiUrl);
+        
+        // Call Flask backend API
+        const response = await fetch(apiUrl);
+
+        console.log('📥 Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('❌ API Error:', errorData);
+            throw new Error(errorData.error || 'Location not found');
+        }
+
+        const result = await response.json();
+        console.log('✅ Received data:', result);
+        
+        if (!result.success || !result.data) {
+            throw new Error('Invalid response format from server');
+        }
+        
+        const weatherData = result.data;
+        currentLocationData = weatherData;
+
+        // Update all displays
+        updateLocationInfo(weatherData);
+        updateCurrentConditions(weatherData);
+        updateAirQuality(weatherData);
+        updateMap(weatherData.location.lat, weatherData.location.lon, weatherData.location.name);
+        updateHistoricalChart(weatherData);
+        await calculateRiskScore(weatherData);
+        await performCorrelationAnalysis(weatherData);
+        await generateContextualAlerts(weatherData); // Generate contextual alerts
+        updateLastUpdateTime();
+
+        showAlert(`Successfully loaded data for ${weatherData.location.name}`, 'success');
+        
+    } catch (error) {
+        console.error('❌ Error fetching data:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            type: error.constructor.name
+        });
+        
+        let errorMessage;
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage = '⚠️ Cannot connect to backend server. Please ensure Flask server is running at http://localhost:5000';
+        } else {
+            errorMessage = error.message || 'Unable to fetch data. Please check the location and try again.';
+        }
+        showAlert(errorMessage, 'danger');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Get user's current location
+function getCurrentLocation() {
+    if (navigator.geolocation) {
+        showLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                document.getElementById('locationInput').value = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+                await searchLocation();
+            },
+            (error) => {
+                showLoading(false);
+                showAlert('Unable to get your location. Please enter manually.', 'warning');
+            }
+        );
+    } else {
+        showAlert('Geolocation is not supported by your browser.', 'warning');
+    }
+}
+
+// Update location information
+function updateLocationInfo(data) {
+    const locationInfo = document.getElementById('locationInfo');
+    locationInfo.innerHTML = `
+        <p><strong>Location:</strong> ${data.location.name}, ${data.location.region}, ${data.location.country}</p>
+        <p><strong>Coordinates:</strong> ${data.location.lat}°N, ${data.location.lon}°E</p>
+        <p><strong>Local Time:</strong> ${data.location.localtime}</p>
+        <p><strong>Timezone:</strong> ${data.location.tz_id}</p>
+    `;
+}
+
+// Update current weather conditions
+function updateCurrentConditions(data) {
+    const current = data.current;
+    
+    document.getElementById('temperature').textContent = `${current.temp_c}°C / ${current.temp_f}°F`;
+    document.getElementById('humidity').textContent = `${current.humidity}%`;
+    document.getElementById('windSpeed').textContent = `${current.wind_kph} km/h`;
+    document.getElementById('windDirection').textContent = `${current.wind_dir} (${current.wind_degree}°)`;
+    document.getElementById('pressure').textContent = `${current.pressure_mb} mb`;
+    document.getElementById('visibility').textContent = `${current.vis_km} km`;
+}
+
+// Update air quality display
+function updateAirQuality(data) {
+    if (data.current.air_quality) {
+        const aqi = data.current.air_quality;
+        
+        // US EPA Index (1-6 scale)
+        const epaIndex = aqi['us-epa-index'] || 1;
+        const aqiValue = Math.round(epaIndex * 50); // Convert to 0-300 scale
+        
+        document.getElementById('aqiValue').textContent = aqiValue;
+        
+        // Determine AQI status
+        let status = 'Good';
+        let statusClass = 'good';
+        
+        if (aqiValue > 200) {
+            status = 'Very Unhealthy';
+            statusClass = 'unhealthy';
+        } else if (aqiValue > 150) {
+            status = 'Unhealthy';
+            statusClass = 'unhealthy';
+        } else if (aqiValue > 100) {
+            status = 'Unhealthy for Sensitive Groups';
+            statusClass = 'moderate';
+        } else if (aqiValue > 50) {
+            status = 'Moderate';
+            statusClass = 'moderate';
+        }
+        
+        const statusElement = document.getElementById('aqiStatus');
+        statusElement.textContent = status;
+        statusElement.className = `aqi-status ${statusClass}`;
+        
+        // Update pollutants
+        document.getElementById('pm25').textContent = `${aqi.pm2_5.toFixed(1)} μg/m³`;
+        document.getElementById('pm10').textContent = `${aqi.pm10.toFixed(1)} μg/m³`;
+        document.getElementById('o3').textContent = `${aqi.o3.toFixed(1)} μg/m³`;
+        document.getElementById('no2').textContent = `${aqi.no2.toFixed(1)} μg/m³`;
+        
+    } else {
+        document.getElementById('aqiValue').textContent = '--';
+        document.getElementById('aqiStatus').textContent = 'No AQI Data';
+        document.getElementById('pm25').textContent = '--';
+        document.getElementById('pm10').textContent = '--';
+        document.getElementById('o3').textContent = '--';
+        document.getElementById('no2').textContent = '--';
+    }
+}
+
+// Update map with location marker
+function updateMap(lat, lon, locationName) {
+    map.setView([lat, lon], 13);
+    
+    if (marker) {
+        map.removeLayer(marker);
+    }
+    
+    marker = L.marker([lat, lon]).addTo(map);
+    marker.bindPopup(`<b>${locationName}</b><br>Monitoring Location`).openPopup();
+}
+
+// Initialize chart
+function initializeChart() {
+    const ctx = document.getElementById('weatherChart').getContext('2d');
+    weatherChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Humidity (%)',
+                    data: [],
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#ffffff'
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(22, 33, 62, 0.9)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff'
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#b0b0b0' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    ticks: { color: '#e74c3c' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    title: {
+                        display: true,
+                        text: 'Temperature (°C)',
+                        color: '#e74c3c'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    ticks: { color: '#3498db' },
+                    grid: { drawOnChartArea: false },
+                    title: {
+                        display: true,
+                        text: 'Humidity (%)',
+                        color: '#3498db'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Update chart with forecast data
+function updateHistoricalChart(data) {
+    const forecastHours = data.forecast.forecastday[0].hour;
+    
+    const labels = [];
+    const temperatures = [];
+    const humidity = [];
+    
+    forecastHours.forEach(hour => {
+        const time = new Date(hour.time).toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        labels.push(time);
+        temperatures.push(hour.temp_c);
+        humidity.push(hour.humidity);
+    });
+    
+    weatherChart.data.labels = labels;
+    weatherChart.data.datasets[0].data = temperatures;
+    weatherChart.data.datasets[1].data = humidity;
+    weatherChart.update();
+}
+
+// Calculate environmental risk score - Now calls backend
+async function calculateRiskScore(data) {
+    try {
+        // Call Flask backend for risk calculation
+        const response = await fetch(`${API_BASE}/risk/calculate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to calculate risk score');
+        }
+        
+        const result = await response.json();
+        
+        // Update main risk display
+        document.getElementById('riskValue').textContent = result.risk_score;
+        document.getElementById('riskMeterFill').style.width = `${result.risk_score}%`;
+        
+        const labelElement = document.getElementById('riskLabel');
+        labelElement.textContent = result.risk_level;
+        labelElement.className = `risk-label ${result.label_class}`;
+        
+        // Display risk factor breakdown
+        displayRiskFactorBreakdown(result.factors, result.risk_score);
+        
+        // Show alert for high risk
+        if (result.risk_score > 70) {
+            const topFactors = result.factors
+                .slice(0, 3)
+                .map(f => f.name)
+                .join(', ');
+            showAlert(`⚠️ HIGH ENVIRONMENTAL RISK (${result.risk_score}/100)! Major factors: ${topFactors}`, 'danger');
+        } else if (result.risk_score > 40) {
+            showAlert(`⚠️ Moderate environmental risk detected (${result.risk_score}/100). Monitor conditions.`, 'warning');
+        }
+        
+    } catch (error) {
+        console.error('Risk calculation error:', error);
+        document.getElementById('riskValue').textContent = '--';
+        document.getElementById('riskLabel').textContent = 'Error';
+    }
+}
+    
+    // ═══════════════════════════════════════════════════════════
+    // MULTI-FACTOR RISK SCORING SYSTEM
+    // ═══════════════════════════════════════════════════════════
+    
+    // FACTOR 1: Air Quality (PM2.5) - Weight: 50 points max
+    if (current.air_quality && current.air_quality.pm2_5) {
+        const pm25 = current.air_quality.pm2_5;
+        let airScore = 0;
+        
+        if (pm25 > 250) {
+            airScore = 50;
+            riskFactors.push({
+                name: 'Air Quality (PM2.5)',
+                value: `${pm25.toFixed(1)} μg/m³`,
+                score: 50,
+                level: 'Hazardous',
+                color: 'danger'
+            });
+        } else if (pm25 > 150) {
+            airScore = 45;
+            riskFactors.push({
+                name: 'Air Quality (PM2.5)',
+                value: `${pm25.toFixed(1)} μg/m³`,
+                score: 45,
+                level: 'Very Unhealthy',
+                color: 'danger'
+            });
+        } else if (pm25 > 80) {
+            airScore = 30;
+            riskFactors.push({
+                name: 'Air Quality (PM2.5)',
+                value: `${pm25.toFixed(1)} μg/m³`,
+                score: 30,
+                level: 'Unhealthy',
+                color: 'warning'
+            });
+        } else if (pm25 > 50) {
+            airScore = 20;
+            riskFactors.push({
+                name: 'Air Quality (PM2.5)',
+                value: `${pm25.toFixed(1)} μg/m³`,
+                score: 20,
+                level: 'Moderate',
+                color: 'warning'
+            });
+        } else if (pm25 > 35) {
+            airScore = 10;
+            riskFactors.push({
+                name: 'Air Quality (PM2.5)',
+                value: `${pm25.toFixed(1)} μg/m³`,
+                score: 10,
+                level: 'Acceptable',
+                color: 'info'
+            });
+        }
+        riskScore += airScore;
+    }
+    
+    // FACTOR 2: Nitrogen Dioxide (NO2) - Weight: 15 points max
+    if (current.air_quality && current.air_quality.no2) {
+        const no2 = current.air_quality.no2;
+        let no2Score = 0;
+        
+        if (no2 > 200) {
+            no2Score = 15;
+            riskFactors.push({
+                name: 'Nitrogen Dioxide',
+                value: `${no2.toFixed(1)} μg/m³`,
+                score: 15,
+                level: 'Very High',
+                color: 'danger'
+            });
+        } else if (no2 > 100) {
+            no2Score = 10;
+            riskFactors.push({
+                name: 'Nitrogen Dioxide',
+                value: `${no2.toFixed(1)} μg/m³`,
+                score: 10,
+                level: 'High',
+                color: 'warning'
+            });
+        } else if (no2 > 50) {
+            no2Score = 5;
+            riskFactors.push({
+                name: 'Nitrogen Dioxide',
+                value: `${no2.toFixed(1)} μg/m³`,
+                score: 5,
+                level: 'Moderate',
+                color: 'info'
+            });
+        }
+        riskScore += no2Score;
+    }
+    
+    // FACTOR 3: Ozone (O3) - Weight: 15 points max
+    if (current.air_quality && current.air_quality.o3) {
+        const o3 = current.air_quality.o3;
+        let o3Score = 0;
+        
+        if (o3 > 180) {
+            o3Score = 15;
+            riskFactors.push({
+                name: 'Ozone Level',
+                value: `${o3.toFixed(1)} μg/m³`,
+                score: 15,
+                level: 'Very High',
+                color: 'danger'
+            });
+        } else if (o3 > 120) {
+            o3Score = 10;
+            riskFactors.push({
+                name: 'Ozone Level',
+                value: `${o3.toFixed(1)} μg/m³`,
+                score: 10,
+                level: 'High',
+                color: 'warning'
+            });
+        } else if (o3 > 80) {
+            o3Score = 5;
+            riskFactors.push({
+                name: 'Ozone Level',
+                value: `${o3.toFixed(1)} μg/m³`,
+                score: 5,
+                level: 'Moderate',
+                color: 'info'
+            });
+        }
+        riskScore += o3Score;
+    }
+    
+    // FACTOR 4: Temperature Extremes - Weight: 15 points max
+    const temp = current.temp_c;
+    let tempScore = 0;
+    
+    if (temp > 40) {
+        tempScore = 15;
+        riskFactors.push({
+            name: 'Extreme Heat',
+            value: `${temp}°C`,
+            score: 15,
+            level: 'Dangerous',
+            color: 'danger'
+        });
+    } else if (temp > 35) {
+        tempScore = 10;
+        riskFactors.push({
+            name: 'High Temperature',
+            value: `${temp}°C`,
+            score: 10,
+            level: 'Heat Stress',
+            color: 'warning'
+        });
+    } else if (temp < -15) {
+        tempScore = 15;
+        riskFactors.push({
+            name: 'Extreme Cold',
+            value: `${temp}°C`,
+            score: 15,
+            level: 'Dangerous',
+            color: 'danger'
+        });
+    } else if (temp < -5) {
+        tempScore = 10;
+        riskFactors.push({
+            name: 'Low Temperature',
+            value: `${temp}°C`,
+            score: 10,
+            level: 'Cold Stress',
+            color: 'warning'
+        });
+    }
+    riskScore += tempScore;
+    
+    // FACTOR 5: Humidity Extremes - Weight: 10 points max
+    const humidity = current.humidity;
+    let humidityScore = 0;
+    
+    if (humidity > 85 && temp > 28) {
+        humidityScore = 10;
+        riskFactors.push({
+            name: 'High Humidity + Heat',
+            value: `${humidity}%`,
+            score: 10,
+            level: 'Oppressive',
+            color: 'warning'
+        });
+    } else if (humidity < 20) {
+        humidityScore = 8;
+        riskFactors.push({
+            name: 'Very Low Humidity',
+            value: `${humidity}%`,
+            score: 8,
+            level: 'Dry Air',
+            color: 'info'
+        });
+    } else if (humidity > 90) {
+        humidityScore = 5;
+        riskFactors.push({
+            name: 'Very High Humidity',
+            value: `${humidity}%`,
+            score: 5,
+            level: 'Uncomfortable',
+            color: 'info'
+        });
+    }
+    riskScore += humidityScore;
+    
+    // FACTOR 6: Wind Speed (Storm Risk) - Weight: 15 points max
+    const windSpeed = current.wind_kph;
+    let windScore = 0;
+    
+    if (windSpeed > 75) {
+        windScore = 15;
+        riskFactors.push({
+            name: 'Severe Wind',
+            value: `${windSpeed} km/h`,
+            score: 15,
+            level: 'Storm Force',
+            color: 'danger'
+        });
+    } else if (windSpeed > 50) {
+        windScore = 10;
+        riskFactors.push({
+            name: 'High Wind',
+            value: `${windSpeed} km/h`,
+            score: 10,
+            level: 'Strong Gale',
+            color: 'warning'
+        });
+    } else if (windSpeed > 30) {
+        windScore = 5;
+        riskFactors.push({
+            name: 'Moderate Wind',
+            value: `${windSpeed} km/h`,
+            score: 5,
+            level: 'Breezy',
+            color: 'info'
+        });
+    }
+    riskScore += windScore;
+    
+    // FACTOR 7: UV Index - Weight: 10 points max
+    const uvIndex = current.uv;
+    let uvScore = 0;
+    
+    if (uvIndex > 10) {
+        uvScore = 10;
+        riskFactors.push({
+            name: 'UV Radiation',
+            value: `${uvIndex}`,
+            score: 10,
+            level: 'Extreme',
+            color: 'danger'
+        });
+    } else if (uvIndex > 7) {
+        uvScore = 7;
+        riskFactors.push({
+            name: 'UV Radiation',
+            value: `${uvIndex}`,
+            score: 7,
+            level: 'Very High',
+            color: 'warning'
+        });
+    } else if (uvIndex > 5) {
+        uvScore = 4;
+        riskFactors.push({
+            name: 'UV Radiation',
+            value: `${uvIndex}`,
+            score: 4,
+            level: 'High',
+            color: 'info'
+        });
+    }
+    riskScore += uvScore;
+    
+    // FACTOR 8: Visibility (Air Quality Indicator) - Weight: 10 points max
+    const visibility = current.vis_km;
+    let visScore = 0;
+    
+    if (visibility < 1) {
+        visScore = 10;
+        riskFactors.push({
+            name: 'Poor Visibility',
+            value: `${visibility} km`,
+            score: 10,
+            level: 'Dense Fog/Smog',
+            color: 'danger'
+        });
+    } else if (visibility < 5) {
+        visScore = 6;
+        riskFactors.push({
+            name: 'Reduced Visibility',
+            value: `${visibility} km`,
+            score: 6,
+            level: 'Fog/Haze',
+            color: 'warning'
+        });
+    }
+    riskScore += visScore;
+    
+    // FACTOR 9: Heat Index (Combined Temperature + Humidity) - Weight: 15 points max
+    if (temp > 25) {
+        const heatIndex = calculateHeatIndex(temp, humidity);
+        let heatIndexScore = 0;
+        
+        if (heatIndex > 41) {
+            heatIndexScore = 15;
+            riskFactors.push({
+                name: 'Heat Index',
+                value: `${heatIndex.toFixed(1)}°C`,
+                score: 15,
+                level: 'Extreme Danger',
+                color: 'danger'
+            });
+        } else if (heatIndex > 32) {
+            heatIndexScore = 10;
+            riskFactors.push({
+                name: 'Heat Index',
+                value: `${heatIndex.toFixed(1)}°C`,
+                score: 10,
+                level: 'Danger',
+                color: 'warning'
+            });
+        } else if (heatIndex > 27) {
+            heatIndexScore = 5;
+            riskFactors.push({
+                name: 'Heat Index',
+                value: `${heatIndex.toFixed(1)}°C`,
+                score: 5,
+                level: 'Caution',
+                color: 'info'
+            });
+        }
+        riskScore += heatIndexScore;
+    }
+// Display risk factor breakdown
+function displayRiskFactorBreakdown(factors, totalScore) {
+    // Find or create breakdown section in risk card
+    const riskCard = document.querySelector('.risk-card .risk-score');
+    let breakdownDiv = document.getElementById('riskBreakdown');
+    
+    if (!breakdownDiv) {
+        breakdownDiv = document.createElement('div');
+        breakdownDiv.id = 'riskBreakdown';
+        breakdownDiv.className = 'risk-breakdown';
+        riskCard.appendChild(breakdownDiv);
+    }
+    
+    if (factors.length === 0) {
+        breakdownDiv.innerHTML = '<p class="breakdown-empty">✅ All parameters within safe ranges</p>';
+        return;
+    }
+    
+    // Sort factors by score (highest first)
+    const sortedFactors = factors.sort((a, b) => b.score - a.score);
+    
+    let html = '<div class="breakdown-title">Risk Factor Breakdown:</div>';
+    html += '<div class="breakdown-items">';
+    
+    sortedFactors.forEach(factor => {
+        const percentage = ((factor.score / totalScore) * 100).toFixed(0);
+        html += `
+            <div class="breakdown-item ${factor.color}">
+                <div class="breakdown-header">
+                    <span class="breakdown-name">${factor.name}</span>
+                    <span class="breakdown-score">+${factor.score} pts</span>
+                </div>
+                <div class="breakdown-details">
+                    <span class="breakdown-value">${factor.value}</span>
+                    <span class="breakdown-level">${factor.level}</span>
+                </div>
+                <div class="breakdown-bar">
+                    <div class="breakdown-bar-fill ${factor.color}" style="width: ${percentage}%"></div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    breakdownDiv.innerHTML = html;
+}
+
+// Perform correlation analysis - Now calls backend
+async function performCorrelationAnalysis(data) {
+    const analysisDiv = document.getElementById('correlationAnalysis');
+    
+    try {
+        // Call Flask backend for correlation analysis
+        const response = await fetch(`${API_BASE}/correlation/analyze`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to analyze correlations');
+        }
+        
+        const result = await response.json();
+        const correlations = result.correlations || [];
+        
+        // Display correlations
+        if (correlations.length > 0) {
+            analysisDiv.innerHTML = correlations.map(cor => 
+                `<div class="correlation-item ${cor.type}">
+                    <div class="correlation-header">${cor.category}</div>
+                    <div class="correlation-message">${cor.message}</div>
+                    ${cor.recommendation ? `<div class="correlation-action">💡 <strong>Action:</strong> ${cor.recommendation}</div>` : ''}
+                </div>`
+            ).join('');
+        } else {
+            analysisDiv.innerHTML = '<p class="placeholder-text">✅ No significant environmental correlations detected. All parameters within normal ranges.</p>';
+        }
+        
+    } catch (error) {
+        console.error('Correlation analysis error:', error);
+        analysisDiv.innerHTML = '<p class="placeholder-text">⚠️ Unable to perform correlation analysis. Using cached data if available.</p>';
+    }
+}
+
+// Identify pollution source based on wind direction
+function identifyPollutionSource(windDir, windDegree, sources, pm25, pm10) {
+    const detectedSources = [];
+    
+    for (const [type, source] of Object.entries(sources)) {
+        const sourceDirDegree = windDirections[source.direction];
+        const angleDiff = Math.abs(windDegree - sourceDirDegree);
+        const normalizedDiff = angleDiff > 180 ? 360 - angleDiff : angleDiff;
+        
+        // Wind within ±45 degrees of pollution source direction
+        if (normalizedDiff < 45) {
+            let confidence = 'High confidence';
+            let action = 'Pollution likely from this source.';
+            
+            if (normalizedDiff < 22.5) {
+                confidence = 'Very high confidence - direct alignment';
+            } else if (normalizedDiff > 30) {
+                confidence = 'Moderate confidence';
+            }
+            
+            // Determine pollution type based on source
+            if (type === 'industrial') {
+                action = 'Industrial emissions containing multiple pollutants. Report if persistent.';
+            } else if (type === 'traffic') {
+                action = 'Vehicle emissions - NO₂ and fine particles from traffic congestion.';
+            } else if (type === 'airport') {
+                action = 'Aircraft and ground vehicle emissions. Includes NOx and ultrafine particles.';
+            } else if (type === 'port') {
+                action = 'Ship emissions and cargo handling activities. High sulfur content possible.';
+            } else if (type === 'power' || type === 'coal') {
+                action = 'Power generation emissions. Includes SO₂ and fine particles from combustion.';
+            } else if (type === 'refinery') {
+                action = 'Petroleum refining emissions. VOCs and sulfur compounds likely.';
+            }
+            
+            detectedSources.push({
+                name: source.name,
+                distance: source.distance,
+                direction: source.direction,
+                confidence: confidence,
+                action: action,
+                angleDiff: normalizedDiff
+            });
+        }
+    }
+    
+    // Sort by angle difference (most aligned first)
+    return detectedSources.sort((a, b) => a.angleDiff - b.angleDiff);
+}
+
+// Calculate heat index
+function calculateHeatIndex(tempC, humidity) {
+    const tempF = (tempC * 9/5) + 32;
+    const hi = -42.379 + 2.04901523*tempF + 10.14333127*humidity 
+                - 0.22475541*tempF*humidity - 0.00683783*tempF*tempF
+                - 0.05481717*humidity*humidity + 0.00122874*tempF*tempF*humidity
+                + 0.00085282*tempF*humidity*humidity - 0.00000199*tempF*tempF*humidity*humidity;
+    return (hi - 32) * 5/9; // Convert back to Celsius
+}
+
+// Update last update time
+function updateLastUpdateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    document.getElementById('lastUpdate').textContent = timeString;
+}
+
+// Show alert banner
+function showAlert(message, type = 'warning') {
+    const alertBanner = document.getElementById('alertBanner');
+    const alertMessage = document.getElementById('alertMessage');
+    
+    alertMessage.textContent = message;
+    alertBanner.className = `alert-banner ${type}`;
+    alertBanner.classList.remove('hidden');
+    
+    // Auto-hide after 5 seconds for success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            alertBanner.classList.add('hidden');
+        }, 5000);
+    }
+}
+
+// Close alert banner
+function closeAlert() {
+    document.getElementById('alertBanner').classList.add('hidden');
+}
+
+// Show/hide loading overlay
+function showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (show) {
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
+    }
+}
+
+// Auto-refresh data every 5 minutes
+setInterval(() => {
+    if (currentLocationData) {
+        const input = document.getElementById('locationInput').value;
+        if (input) {
+            console.log('Auto-refreshing data...');
+            searchLocation();
+        }
+    }
+}, 300000); // 5 minutes
+
+// Generate contextual alerts - Now calls backend
+async function generateContextualAlerts(data) {
+    try {
+        // Call Flask backend for contextual alerts
+        const response = await fetch(`${API_BASE}/alerts/contextual`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to generate alerts');
+        }
+        
+        const result = await response.json();
+        displayContextualAlerts(result.alerts);
+        
+    } catch (error) {
+        console.error('Alert generation error:', error);
+        // Hide alerts section on error
+        document.getElementById('contextualAlertsSection').classList.add('hidden');
+    }
+}
+
+function displayContextualAlerts(alerts) {
+    const section = document.getElementById('contextualAlertsSection');
+    const container = document.getElementById('contextualAlerts');
+    const countBadge = document.getElementById('alertCount');
+    
+    if (alerts.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    
+    // Show section and update count
+    section.classList.remove('hidden');
+    countBadge.textContent = alerts.length;
+    
+    // Generate HTML for each alert
+    const now = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    
+    const alertsHTML = alerts.map(alert => `
+        <div class="contextual-alert-card severity-${alert.severity}">
+            <div class="alert-header">
+                <div class="alert-icon">${alert.icon}</div>
+                <div class="alert-header-content">
+                    <div class="alert-title">
+                        ${alert.title}
+                        <span class="alert-severity-badge ${alert.severity}">${alert.severity}</span>
+                    </div>
+                    <div class="alert-what">${alert.what}</div>
+                </div>
+            </div>
+            
+            <div class="alert-section">
+                <div class="alert-section-title cause">
+                    <i class="fas fa-brain"></i> WHY IS THIS HAPPENING?
+                </div>
+                <div class="alert-section-content">
+                    ${alert.cause}
+                </div>
+            </div>
+            
+            <div class="alert-section">
+                <div class="alert-section-title action">
+                    <i class="fas fa-shield-alt"></i> WHAT SHOULD YOU DO?
+                </div>
+                <div class="alert-section-content">
+                    ${alert.action}
+                </div>
+            </div>
+            
+            <div class="alert-timestamp">
+                <i class="fas fa-clock"></i> Alert generated at ${now} | Based on: ${alert.sources.join(', ')}
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = alertsHTML;
+    
+    // Scroll to alerts section
+    setTimeout(() => {
+        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 300);
+}
+
+// Helper functions for categories
+function getPM25Category(pm25) {
+    if (pm25 > 250) return 'Hazardous';
+    if (pm25 > 150) return 'Very Unhealthy';
+    if (pm25 > 80) return 'Unhealthy';
+    if (pm25 > 50) return 'Moderate';
+    if (pm25 > 35) return 'Acceptable';
+    return 'Good';
+}
+
+function getUVCategory(uv) {
+    if (uv >= 11) return 'Extreme';
+    if (uv >= 8) return 'Very High';
+    if (uv >= 6) return 'High';
+    if (uv >= 3) return 'Moderate';
+    return 'Low';
+}
+                icon: '🟠',
+                title: 'HIGH ALERT: Elevated Air Pollution with Poor Ventilation',
+                what: `PM2.5 levels at ${pm25.toFixed(1)} μg/m³ (${getPM25Category(pm25)}) combined with low wind speed.`,
+                cause: `Weak winds (${windSpeed} km/h) are insufficient to disperse local pollution. Emissions from nearby sources (traffic, cooking, industry) are building up. The air is not circulating effectively.`,
+                action: `<strong>Recommended Actions:</strong><br>
+                    • Limit outdoor activities, especially for sensitive groups<br>
+                    • Close windows during peak traffic hours<br>
+                    • Postpone outdoor exercise to when air quality improves<br>
+                    • Consider using air purifiers indoors<br>
+                    • Check air quality before outdoor activities`,
+                sources: ['PM2.5', 'Wind Speed']
+            });
+        }
+        
+        // ALERT 2: Pollution Source Detection (Wind + PM2.5)
+        const cityName = location.name.toLowerCase();
+        const sources = pollutionSources[cityName];
+        if (pm25 > 50 && windSpeed > 10 && sources) {
+            const windDir = current.wind_dir;
+            const windDegree = current.wind_degree;
+            const detectedSources = identifyPollutionSource(windDir, windDegree, sources, pm25, current.air_quality.pm10);
+            
+            if (detectedSources.length > 0) {
+                const primarySource = detectedSources[0];
+                alerts.push({
+                    severity: 'high',
+                    icon: '🏭',
+                    title: 'ALERT: Pollution Source Identified',
+                    what: `PM2.5 at ${pm25.toFixed(1)} μg/m³ with winds from ${windDir} (${windDegree}°).`,
+                    cause: `Wind is carrying pollution from <strong>${primarySource.name}</strong> (approximately ${primarySource.distance} ${primarySource.direction} of your location). ${primarySource.confidence}. This is consistent with the observed pollutant levels and wind direction alignment.`,
+                    action: `<strong>Protective Measures:</strong><br>
+                    • Close windows on the ${windDir} side of building<br>
+                    • Stay indoors until wind direction changes<br>
+                    • Avoid outdoor activities downwind of the source<br>
+                    • Report persistent high pollution to environmental authorities<br>
+                    • Consider relocating indoor air intake if possible`,
+                    sources: ['PM2.5', 'Wind Direction', 'Source Location']
+                });
+            }
+        }
+        
+        // ALERT 3: Photochemical Smog (High Temp + NO2 + Sunlight)
+        const temp = current.temp_c;
+        const no2 = current.air_quality.no2;
+        const o3 = current.air_quality.o3;
+        const uvIndex = current.uv;
+        const isDay = current.is_day;
+        
+        if (temp > 28 && no2 > 50 && o3 > 100 && isDay && uvIndex > 5) {
+            alerts.push({
+                severity: 'high',
+                icon: '☀️',
+                title: 'HIGH ALERT: Photochemical Smog Formation',
+                what: `Ground-level ozone at ${o3.toFixed(1)} μg/m³ with high NO₂ (${no2.toFixed(1)} μg/m³) under sunny conditions.`,
+                cause: `Hot temperature (${temp}°C), strong sunlight (UV ${uvIndex}), and nitrogen dioxide from vehicle emissions are reacting to produce harmful ground-level ozone. This photochemical reaction is intensifying throughout the day and will peak in afternoon hours.`,
+                action: `<strong>Health Protection:</strong><br>
+                    • Avoid outdoor exercise, especially 12 PM - 4 PM<br>
+                    • Stay in air-conditioned spaces during peak heat<br>
+                    • Ozone levels typically highest in afternoon<br>
+                    • People with asthma/respiratory conditions take extra precaution<br>
+                    • Reduce vehicle use to minimize NO₂ emissions<br>
+                    • Conditions should improve after sunset`,
+                sources: ['Ozone', 'NO₂', 'Temperature', 'UV Index']
+            });
+        }
+        
+        // ALERT 4: Temperature Inversion Trapping
+        if (windSpeed < 5 && pm25 > 35 && current.humidity > 75) {
+            alerts.push({
+                severity: 'critical',
+                icon: '🌫️',
+                title: 'CRITICAL: Temperature Inversion Event',
+                what: `Atmospheric conditions are trapping pollutants. PM2.5: ${pm25.toFixed(1)} μg/m³, Wind: ${windSpeed} km/h, Humidity: ${current.humidity}%.`,
+                cause: `A temperature inversion layer is preventing vertical air mixing. The combination of calm winds, high humidity (${current.humidity}%), and stable atmospheric conditions creates a "lid" that traps pollutants near the ground. This is a classic pollution episode scenario.`,
+                action: `<strong>Emergency Measures:</strong><br>
+                    • This is a significant air quality event - take seriously<br>
+                    • Minimize all outdoor exposure<br>
+                    • Keep vulnerable people (children, elderly) indoors<br>
+                    • Close all windows and external air vents<br>
+                    • Use indoor air filtration continuously<br>
+                    • Monitor for symptoms: coughing, throat irritation, breathing difficulty<br>
+                    • Situation will improve when weather pattern changes`,
+                sources: ['PM2.5', 'Wind Speed', 'Humidity', 'Atmospheric Stability']
+            });
+        }
+    }
+    
+    // ALERT 5: Heat Stress (Heat Index)
+    if (current.temp_c > 28 && current.humidity > 60) {
+        const heatIndex = calculateHeatIndex(current.temp_c, current.humidity);
+        
+        if (heatIndex > 40) {
+            alerts.push({
+                severity: 'critical',
+                icon: '🌡️',
+                title: 'EXTREME: Heat Index - Danger Level',
+                what: `Heat index is ${heatIndex.toFixed(1)}°C (feels like temperature) with actual temperature ${current.temp_c}°C and humidity ${current.humidity}%.`,
+                cause: `High humidity prevents sweat evaporation, making it difficult for your body to cool itself. The combination of heat and humidity creates dangerous conditions for heat-related illness including heat exhaustion and heat stroke.`,
+                action: `<strong>Heat Safety - Urgent:</strong><br>
+                    • Stay in air conditioning - this is dangerous heat<br>
+                    • Drink water frequently (don't wait until thirsty)<br>
+                    • NEVER leave anyone in parked vehicles<br>
+                    • Avoid strenuous outdoor activities<br>
+                    • Wear light-colored, loose clothing<br>
+                    • Check on elderly neighbors and vulnerable people<br>
+                    • Watch for heat illness: dizziness, nausea, rapid heartbeat, confusion<br>
+                    • Call emergency services if someone shows heat stroke symptoms`,
+                sources: ['Temperature', 'Humidity', 'Heat Index']
+            });
+        } else if (heatIndex > 32) {
+            alerts.push({
+                severity: 'high',
+                icon: '🔥',
+                title: 'WARNING: High Heat Index',
+                what: `Heat index at ${heatIndex.toFixed(1)}°C creates heat stress risk. Temperature: ${current.temp_c}°C, Humidity: ${current.humidity}%.`,
+                cause: `The combination of heat and humidity makes it feel much hotter than the actual temperature. Your body's cooling mechanism (sweating) is less effective in humid conditions, increasing risk of heat-related illness.`,
+                action: `<strong>Heat Precautions:</strong><br>
+                    • Limit outdoor activities during hottest hours (11 AM - 4 PM)<br>
+                    • Stay hydrated - drink before, during, and after outdoor activity<br>
+                    • Take frequent breaks in shade or air conditioning<br>
+                    • Wear sunscreen, hat, and breathable clothing<br>
+                    • Never leave children or pets in vehicles<br>
+                    • Watch for heat cramps, exhaustion, or dizziness`,
+                sources: ['Temperature', 'Humidity', 'Heat Index']
+            });
+        }
+    }
+    
+    // ALERT 6: Extreme UV Exposure
+    if (current.uv > 8 && current.cloud < 40) {
+        const burnTime = Math.max(10, Math.round(200 / (current.uv * 1.5)));
+        alerts.push({
+            severity: current.uv > 10 ? 'critical' : 'high',
+            icon: '☀️',
+            title: `${current.uv > 10 ? 'EXTREME' : 'HIGH'}: UV Radiation Warning`,
+            what: `UV index is ${current.uv} (${getUVCategory(current.uv)}) with ${current.cloud}% cloud cover.`,
+            cause: `Clear skies allow intense solar radiation to reach ground level. At this UV level, unprotected skin can burn in approximately ${burnTime} minutes. UV radiation damages skin DNA and increases skin cancer risk. Eyes are also at risk from UV exposure.`,
+            action: `<strong>Sun Protection Required:</strong><br>
+                    • Apply broad-spectrum SPF 30+ sunscreen every 2 hours<br>
+                    • Wear protective clothing: long sleeves, wide-brimmed hat<br>
+                    • Use UV-blocking sunglasses (100% UVA/UVB protection)<br>
+                    • Seek shade, especially 10 AM - 4 PM<br>
+                    • Reapply sunscreen after swimming or sweating<br>
+                    • Children need extra protection - they burn faster<br>
+                    • Check moles regularly for changes`,
+            sources: ['UV Index', 'Cloud Cover']
+        });
+    }
+    
+    // ALERT 7: Storm/High Wind Warning
+    if (current.wind_kph > 50) {
+        const windCategory = current.wind_kph > 75 ? 'Storm Force' : 'Gale Force';
+        alerts.push({
+            severity: current.wind_kph > 75 ? 'critical' : 'high',
+            icon: '💨',
+            title: `${current.wind_kph > 75 ? 'SEVERE' : 'HIGH'}: ${windCategory} Winds`,
+            what: `Wind speed at ${current.wind_kph} km/h from ${current.wind_dir}. ${windCategory} conditions present.`,
+            cause: `A strong weather system is producing dangerous winds. At these speeds, loose objects become projectiles, trees and power lines may fall, and structural damage is possible. Wind gusts may be even stronger than sustained winds.`,
+            action: `<strong>Wind Safety:</strong><br>
+                    • Stay indoors and away from windows<br>
+                    • Secure or bring inside loose outdoor items<br>
+                    • Avoid driving, especially high-profile vehicles<br>
+                    • Stay away from trees, power lines, and unstable structures<br>
+                    • Be prepared for potential power outages<br>
+                    • Do not attempt outdoor repairs until winds subside<br>
+                    • If caught outside, seek substantial shelter immediately`,
+            sources: ['Wind Speed', 'Weather System']
+        });
+    }
+    
+    // Display alerts
+    displayContextualAlerts(alerts);
+}
+
+function displayContextualAlerts(alerts) {
+    const section = document.getElementById('contextualAlertsSection');
+    const container = document.getElementById('contextualAlerts');
+    const countBadge = document.getElementById('alertCount');
+    
+    if (alerts.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    
+    // Show section and update count
+    section.classList.remove('hidden');
+    countBadge.textContent = alerts.length;
+    
+    // Generate HTML for each alert
+    const now = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    
+    const alertsHTML = alerts.map(alert => `
+        <div class="contextual-alert-card severity-${alert.severity}">
+            <div class="alert-header">
+                <div class="alert-icon">${alert.icon}</div>
+                <div class="alert-header-content">
+                    <div class="alert-title">
+                        ${alert.title}
+                        <span class="alert-severity-badge ${alert.severity}">${alert.severity}</span>
+                    </div>
+                    <div class="alert-what">${alert.what}</div>
+                </div>
+            </div>
+            
+            <div class="alert-section">
+                <div class="alert-section-title cause">
+                    <i class="fas fa-brain"></i> WHY IS THIS HAPPENING?
+                </div>
+                <div class="alert-section-content">
+                    ${alert.cause}
+                </div>
+            </div>
+            
+            <div class="alert-section">
+                <div class="alert-section-title action">
+                    <i class="fas fa-shield-alt"></i> WHAT SHOULD YOU DO?
+                </div>
+                <div class="alert-section-content">
+                    ${alert.action}
+                </div>
+            </div>
+            
+            <div class="alert-timestamp">
+                <i class="fas fa-clock"></i> Alert generated at ${now} | Based on: ${alert.sources.join(', ')}
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = alertsHTML;
+    
+    // Scroll to alerts section
+    setTimeout(() => {
+        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 300);
+}
+
+// Helper functions for categories
+function getPM25Category(pm25) {
+    if (pm25 > 250) return 'Hazardous';
+    if (pm25 > 150) return 'Very Unhealthy';
+    if (pm25 > 80) return 'Unhealthy';
+    if (pm25 > 50) return 'Moderate';
+    if (pm25 > 35) return 'Acceptable';
+    return 'Good';
+}
+
+function getUVCategory(uv) {
+    if (uv >= 11) return 'Extreme';
+    if (uv >= 8) return 'Very High';
+    if (uv >= 6) return 'High';
+    if (uv >= 3) return 'Moderate';
+    return 'Low';
+}
